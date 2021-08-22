@@ -13,9 +13,10 @@ import java.lang.reflect.Method;
 import java.net.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
-public record ActionRunner(String classId, String code, File tempDir) {
-    public boolean compile() {
+public record ActionRunner(String classId, String code) {
+    public boolean compile(File tempDir) {
         File sourceFile = new File(tempDir, "Action" + classId + ".java");
         try {
             FileWriter sourceWriter = new FileWriter(sourceFile);
@@ -52,7 +53,7 @@ public record ActionRunner(String classId, String code, File tempDir) {
         return diagnostics.getDiagnostics().isEmpty();
     }
 
-    public boolean run(Player player, JavaPlugin plugin) {
+    public boolean run(Player player, JavaPlugin plugin, File tempDir, Consumer<Boolean> callback) {
         URL[] urls;
         try {
             urls = new URL[]{tempDir.toURI().toURL()};
@@ -66,11 +67,13 @@ public record ActionRunner(String classId, String code, File tempDir) {
         try {
             Class<?> actionClass = urlClassLoader.loadClass("Action" + classId);
             Method actionMethod = actionClass.getMethod("runAction", Player.class);
-            Bukkit.getScheduler().runTask(plugin, task -> {
+            plugin.getServer().getScheduler().runTask(plugin, task -> {
                 try {
                     actionMethod.invoke(null, player);
+                    callback.accept(true);
                 } catch (IllegalAccessException | InvocationTargetException e) {
                     e.printStackTrace();
+                    callback.accept(false);
                 }
             });
         } catch (ClassNotFoundException | NoSuchMethodException e) {
