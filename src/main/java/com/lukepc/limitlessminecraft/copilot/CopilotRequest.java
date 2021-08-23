@@ -9,7 +9,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -39,7 +38,6 @@ public class CopilotRequest {
 
         HttpRequest httpRequest = HttpRequest.newBuilder()
                 .uri(URI.create(API_URL))
-                .timeout(Duration.ofSeconds(3))
                 .header("Authorization", "Bearer " + token.token())
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")

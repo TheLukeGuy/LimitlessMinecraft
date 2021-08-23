@@ -20,7 +20,7 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class LimitlessMinecraft extends JavaPlugin implements Listener {
-    private static final int CANDIDATES_PER_ACTION = 20;
+    private static final int CANDIDATES_PER_ACTION = 50;
 
     private static final Random random = new Random();
     private static File tempDir;
@@ -62,6 +62,7 @@ public class LimitlessMinecraft extends JavaPlugin implements Listener {
         player.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(message));
     }
 
+    @SuppressWarnings("SynchronizationOnLocalVariableOrMethodParameter")
     public void generateCode(List<ActionCandidate> candidates, String classId, String prompt) {
         ActionCandidate candidate = new ActionCandidate(classId);
         synchronized (candidates) {
@@ -84,11 +85,7 @@ public class LimitlessMinecraft extends JavaPlugin implements Listener {
             candidate.setStatus(CandidateStatus.BAD_CODE);
             return;
         }
-
-        String fullCodeFlat = fullCode
-                .replace("\n", "")
-                .replace(" ", "");
-        if (!fullCodeFlat.endsWith("}}")) {
+        if (!fullCode.endsWith("\n}")) {
             fullCode += "\n}";
         }
 
@@ -98,7 +95,8 @@ public class LimitlessMinecraft extends JavaPlugin implements Listener {
 
     public void runAction(List<ActionRunner> compiledRunners, Player player) {
         for (ActionRunner runner : compiledRunners) {
-            getLogger().info("The following code is being executed:\n" + ChatColor.DARK_GRAY + runner.code());
+            String loggableCode = runner.code().replace("\u00a7", "[\u00a7]");
+            getLogger().info("The following code is being executed:\n" + ChatColor.DARK_GRAY + loggableCode);
             sendActionBar(player, ChatColor.GREEN + "Attempting to run the next action candidate...");
 
             AtomicBoolean finishedRunning = new AtomicBoolean(false);
@@ -139,17 +137,17 @@ public class LimitlessMinecraft extends JavaPlugin implements Listener {
             String classId = baseId + i;
             String prompt = String.format("""
                 import org.bukkit.*;
+                import org.bukkit.block.*;
                 import org.bukkit.entity.*;
                 import org.bukkit.inventory.*;
                 import org.bukkit.plugin.*;
                 import org.bukkit.plugin.java.*;
                 
-                import java.time.*;
                 import java.util.*;
                 
                 public class Action%s {
                     // Action: %s
-                    public static void runAction(Player me) {""", classId, message);
+                    public static void runAction(Player me, World world, Server server) {""", classId, message);
 
             getServer().getScheduler().runTaskAsynchronously(this, task ->
                     generateCode(candidates, classId, prompt));
@@ -157,12 +155,13 @@ public class LimitlessMinecraft extends JavaPlugin implements Listener {
 
         getServer().getScheduler().runTaskAsynchronously(this, task -> {
             List<ActionRunner> compiledRunners = new ArrayList<>();
+            long startTime = System.currentTimeMillis();
 
-            BossBar bossBar = getServer().createBossBar("", BarColor.GREEN, BarStyle.SOLID);
+            BossBar bossBar = getServer().createBossBar("Starting...", BarColor.RED, BarStyle.SOLID);
             bossBar.addPlayer(player);
 
             while (true) {
-                Map<CandidateStatus, List<ActionCandidate>> candidatesByStatus = new HashMap<>();
+                Map<CandidateStatus, List<ActionCandidate>> candidatesByStatus = new LinkedHashMap<>();
                 for (CandidateStatus status : CandidateStatus.values()) {
                     List<ActionCandidate> statusList = new ArrayList<>();
                     candidatesByStatus.put(status, statusList);
@@ -194,11 +193,16 @@ public class LimitlessMinecraft extends JavaPlugin implements Listener {
                             .append(count);
                 }
                 bossBar.setTitle(bossBarText.toString());
-
+                bossBar.setColor(compiledRunners.isEmpty() ? BarColor.RED : BarColor.GREEN);
                 double percentDone = (double) completeCandidates / CANDIDATES_PER_ACTION;
                 bossBar.setProgress(percentDone);
 
-                if (completeCandidates >= CANDIDATES_PER_ACTION) {
+                long elapsedTime = System.currentTimeMillis() - startTime;
+
+                boolean allDone = completeCandidates == CANDIDATES_PER_ACTION;
+                boolean enoughCompiled = compiledRunners.size() >= (CANDIDATES_PER_ACTION * 0.2);
+                boolean tooLongAndSomeCompiled = (elapsedTime >= 5000) && !compiledRunners.isEmpty();
+                if (allDone || enoughCompiled || tooLongAndSomeCompiled) {
                     if (compiledRunners.isEmpty()) {
                         sendActionBar(player, ChatColor.RED +
                                 "Copilot didn't generate anything runnable. Try rephrasing your message. :(");

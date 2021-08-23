@@ -1,6 +1,8 @@
 package com.lukepc.limitlessminecraft;
 
 import org.bukkit.Bukkit;
+import org.bukkit.Server;
+import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -48,9 +50,7 @@ public record ActionRunner(String classId, String code) {
         DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
         JavaCompiler.CompilationTask task = compiler.getTask(
                 null, fileManager, diagnostics, compilerOptions, null, compilationUnits);
-        task.call();
-
-        return diagnostics.getDiagnostics().isEmpty();
+        return task.call();
     }
 
     public boolean run(Player player, JavaPlugin plugin, File tempDir, Consumer<Boolean> callback) {
@@ -66,10 +66,10 @@ public record ActionRunner(String classId, String code) {
         URLClassLoader urlClassLoader = new URLClassLoader(urls, classLoader);
         try {
             Class<?> actionClass = urlClassLoader.loadClass("Action" + classId);
-            Method actionMethod = actionClass.getMethod("runAction", Player.class);
+            Method actionMethod = actionClass.getMethod("runAction", Player.class, World.class, Server.class);
             plugin.getServer().getScheduler().runTask(plugin, task -> {
                 try {
-                    actionMethod.invoke(null, player);
+                    actionMethod.invoke(null, player, player.getWorld(), plugin.getServer());
                     callback.accept(true);
                 } catch (IllegalAccessException | InvocationTargetException e) {
                     e.printStackTrace();
